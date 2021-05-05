@@ -30,6 +30,7 @@ import java.net.URI;
 import java.net.URL;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.google.gwt.http.client.Response;
@@ -48,6 +49,9 @@ import com.google.gwt.user.server.rpc.SerializationPolicy;
  * Base on {@link com.google.gwt.user.client.rpc.impl.RemoteServiceProxy}
  */
 public class RemoteServiceSyncProxy implements SerializationStreamFactory {
+
+	public static final int TIMEOUT = 60000;
+
 	public static class DummySerializationPolicy extends SerializationPolicy {
 		@Override
 		public boolean shouldDeserializeFields(Class<?> clazz) {
@@ -190,6 +194,10 @@ public class RemoteServiceSyncProxy implements SerializationStreamFactory {
 					"text/x-gwt-rpc; charset=utf-8");
 			connection.setRequestProperty("Content-Length",
 					"" + requestData.getBytes("UTF-8").length);
+			// increase connection timeout
+			connection.setConnectTimeout(TIMEOUT);
+			connection.setReadTimeout(TIMEOUT);
+
 			// Patch for Issue 21 - Modified to only send cookies for
 			// moduleBaseURL host and sets the domain/path for the cookie in the
 			// event
@@ -292,8 +300,34 @@ public class RemoteServiceSyncProxy implements SerializationStreamFactory {
 				throw new StatusCodeException(Response.SC_NOT_FOUND,
 						"Not Found", null);
 			}
-			throw new InvocationException(
-					"IOException while receiving RPC response", e);
+			logger.log(Level.SEVERE, "", e);
+
+			try (InputStream ies = connection.getErrorStream()) {
+				ByteArrayOutputStream baos = new ByteArrayOutputStream();
+				byte[] buffer = new byte[1024];
+				int len;
+				while ((len = ies.read(buffer)) > 0) {
+					baos.write(buffer, 0, len);
+				}
+				String encodedResponse = baos.toString("UTF8");
+				if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) {
+					throw new StatusCodeException(500, encodedResponse);
+				} else if (encodedResponse == null) {
+					// This can happen if the XHR is interrupted by the server dying
+					throw new InvocationException("No response payload");
+				} else if (isReturnValue(encodedResponse)) {
+					encodedResponse = encodedResponse.substring(4);
+					return responseReader.read(createStreamReader(encodedResponse));
+				} else if (isThrownException(encodedResponse)) {
+					encodedResponse = encodedResponse.substring(4);
+					throw (Throwable) createStreamReader(encodedResponse).readObject();
+				} else {
+					throw new InvocationException("Unknown response " + encodedResponse);
+				}
+			} catch (IOException ex) {
+				// Default RemoteServiceSyncProxy behaviour for handling IOExceptions
+				throw new InvocationException("IOException while receiving RPC response", e);
+			}
 		} catch (SerializationException e) {
 			throw new InvocationException(
 					"Error while deserialization response", e);
@@ -305,7 +339,7 @@ public class RemoteServiceSyncProxy implements SerializationStreamFactory {
 				}
 			}
 			if (connection != null) {
-				// connection.disconnect();
+				connection.disconnect();
 			}
 		}
 	}
