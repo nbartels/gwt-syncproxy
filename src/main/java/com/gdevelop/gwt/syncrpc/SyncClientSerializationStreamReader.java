@@ -425,6 +425,14 @@ AbstractSerializationStreamReader {
 				continue;
 			}
 			if (ch == '\"') { // end-of-string
+				// Since GWT2.8.x com.google.gwt.user.server.rpc.impl.ServerSerializationStreamWriter.escapeString(java.lang.String, boolean, com.google.gwt.user.server.rpc.impl.ServerSerializationStreamWriter.LengthConstrainedArray)
+				// splits a String com.google.gwt.user.server.rpc.impl.ServerSerializationStreamWriter.MAX_STRING_NODE_LENGTH so therefore we have to append them
+				if (i != raw.length() - 1) {
+				   if (raw.charAt(i + 1) == '+') {
+				      i+=2;
+				      continue;
+				   }
+				}
 				this.stringTable.add(buffer.toString());
 
 				buffer.setLength(0);
