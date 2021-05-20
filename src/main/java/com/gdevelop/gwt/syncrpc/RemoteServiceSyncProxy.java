@@ -30,6 +30,7 @@ import java.net.URI;
 import java.net.URL;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -49,8 +50,6 @@ import com.google.gwt.user.server.rpc.SerializationPolicy;
  * Base on {@link com.google.gwt.user.client.rpc.impl.RemoteServiceProxy}
  */
 public class RemoteServiceSyncProxy implements SerializationStreamFactory {
-
-	public static final int TIMEOUT = 60000;
 
 	public static class DummySerializationPolicy extends SerializationPolicy {
 		@Override
@@ -194,9 +193,12 @@ public class RemoteServiceSyncProxy implements SerializationStreamFactory {
 					"text/x-gwt-rpc; charset=utf-8");
 			connection.setRequestProperty("Content-Length",
 					"" + requestData.getBytes("UTF-8").length);
-			// increase connection timeout
-			connection.setConnectTimeout(TIMEOUT);
-			connection.setReadTimeout(TIMEOUT);
+
+			// set connection timeout
+			Optional.ofNullable(System.getProperty("syncproxy.http_connection_timeout_millis")) //
+							.map(Integer::valueOf).ifPresent(connection::setConnectTimeout);
+			Optional.ofNullable(System.getProperty("syncproxy.http_read_timeout_millis")) //
+							.map(Integer::valueOf).ifPresent(connection::setReadTimeout);
 
 			// Patch for Issue 21 - Modified to only send cookies for
 			// moduleBaseURL host and sets the domain/path for the cookie in the
